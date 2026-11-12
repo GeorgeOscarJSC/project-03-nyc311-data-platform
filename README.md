@@ -28,7 +28,9 @@ Database: project03_nyc311
 Main table: nyc311_requests
 
 Reporting view: agency_performance
-Reporting Query
+## Reporting Query
+
+```sql
 SELECT *
 FROM agency_performance
 ORDER BY total_requests DESC;
@@ -45,5 +47,4 @@ tail -n 30 pipeline.log
 - Older records updated later may be missed.
 - API offset pagination may be affected by source changes.
 - Pipeline requires Docker and PostgreSQL.
-  EOF
   
