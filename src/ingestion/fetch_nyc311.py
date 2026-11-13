@@ -1,6 +1,6 @@
 import http.client
 import json
-import os
+import shutil
 import subprocess
 import time
 import urllib.error
@@ -8,94 +8,167 @@ import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
+import os
 
 BASE = Path(__file__).resolve().parents[2]
-OUTPUT = BASE / "data/bronze"
-OUTPUT.mkdir(parents=True, exist_ok=True)
+BRONZE = BASE / "data/bronze"
+RESUME = BRONZE / ".ingestion_resume"
+API = "https://data.cityofnewyork.us/resource/erm2-nwe9.json"
+PAGE_SIZE = 1000
 
+BRONZE.mkdir(parents=True, exist_ok=True)
 
-LOOKBACK_DAYS = int(os.getenv("LOOKBACK_DAYS", "1"))
-if not 1 <= LOOKBACK_DAYS <= 7:
-    raise ValueError("LOOKBACK_DAYS must be between 1 and 7")
+def save_json(path, data):
+    temp = path.with_suffix(path.suffix + ".tmp")
+    temp.write_text(json.dumps(data, ensure_ascii=False))
+    temp.replace(path)
 
-# 1. Đọc checkpoint từ PostgreSQL
-result = subprocess.run(
-    [
-        "docker", "exec", "ecdp-postgres",
-        "psql", "-X", "-At",
-        "-U", "data_engineer",
-        "-d", "project03_nyc311",
-        "-c", f"""
-            SELECT (MAX(created_date) - INTERVAL '{LOOKBACK_DAYS} days')::text
-            FROM nyc311_requests;
-        """
-    ],
-    capture_output=True,
-    text=True,
-    check=True
-)
+# Khôi phục phiên tải cũ, hoặc tạo phiên mới
+meta_file = RESUME / "metadata.json"
 
-checkpoint = result.stdout.strip()
-if not checkpoint:
-    raise RuntimeError("Database chưa có checkpoint")
+if meta_file.exists():
+    meta = json.loads(meta_file.read_text())
+    print("RESUMING PREVIOUS DOWNLOAD")
+else:
+    lookback = int(os.getenv("LOOKBACK_DAYS", "1"))
+    if not 1 <= lookback <= 7:
+        raise ValueError("LOOKBACK_DAYS must be 1..7")
 
-checkpoint = checkpoint.replace(" ", "T")
-print("Checkpoint:", checkpoint)
-
-# 2. Tải dữ liệu theo từng trang 1.000 bản ghi
-rows = []
-offset = 0
-page_size = 1000
-
-while True:
-    params = urllib.parse.urlencode({
-        "$where": f"created_date >= '{checkpoint}'",
-        "$order": "created_date ASC, unique_key ASC",
-        "$limit": page_size,
-        "$offset": offset
-    })
-
-    url = (
-        "https://data.cityofnewyork.us/resource/"
-        "erm2-nwe9.json?" + params
+    result = subprocess.run(
+        [
+            "docker", "exec", "ecdp-postgres",
+            "psql", "-X", "-At",
+            "-U", "data_engineer",
+            "-d", "project03_nyc311",
+            "-c", f"""
+                SELECT (
+                    MAX(created_date)
+                    - INTERVAL '{lookback} days'
+                )::text
+                FROM nyc311_requests;
+            """
+        ],
+        capture_output=True,
+        text=True,
+        check=True
     )
 
-    for attempt in range(3):
+    start = result.stdout.strip().replace(" ", "T")
+    if not start:
+        raise RuntimeError("Checkpoint not found")
+
+    meta = {
+        "start": start,
+        "end": datetime.now(timezone.utc).strftime(
+            "%Y-%m-%dT%H:%M:%S"
+        ),
+        "run_date": datetime.now(timezone.utc).strftime("%Y%m%d"),
+        "page_size": PAGE_SIZE
+    }
+
+    RESUME.mkdir(parents=True, exist_ok=True)
+    save_json(meta_file, meta)
+
+print("Checkpoint:", meta["start"])
+
+# Đọc trang cuối đã lưu
+pages = sorted(RESUME.glob("page_*.json"))
+page_number = len(pages)
+cursor = None
+
+if pages:
+    last = json.loads(pages[-1].read_text())
+    cursor = last[-1]
+    print("Already saved:", sum(
+        len(json.loads(p.read_text())) for p in pages
+    ))
+
+# Tiếp tục tải bằng Keyset Pagination
+while True:
+    where = (
+        f"created_date >= '{meta['start']}' "
+        f"AND created_date <= '{meta['end']}'"
+    )
+
+    if cursor:
+        date = cursor["created_date"]
+        key = cursor["unique_key"]
+        where += (
+            f" AND (created_date > '{date}' "
+            f"OR (created_date = '{date}' "
+            f"AND unique_key > '{key}'))"
+        )
+
+    params = urllib.parse.urlencode({
+        "$where": where,
+        "$order": "created_date ASC, unique_key ASC",
+        "$limit": meta["page_size"]
+    })
+
+    request = urllib.request.Request(
+        API + "?" + params,
+        headers={"User-Agent": "Project03/1.0"}
+    )
+
+    for attempt in range(1, 4):
         try:
-            with urllib.request.urlopen(url, timeout=180) as response:
+            with urllib.request.urlopen(
+                request, timeout=180
+            ) as response:
                 batch = json.load(response)
             break
-        except (urllib.error.HTTPError,
-                urllib.error.URLError,
-                http.client.IncompleteRead,
-                TimeoutError, ConnectionError) as exc:
-            if isinstance(exc, urllib.error.HTTPError) and (
-                exc.code not in (429, 500, 502, 503, 504)
-            ):
+        except (
+            urllib.error.URLError,
+            http.client.IncompleteRead,
+            http.client.RemoteDisconnected,
+            TimeoutError,
+            ConnectionError
+        ) as exc:
+            if isinstance(exc, urllib.error.HTTPError):
+                if exc.code not in (429, 500, 502, 503, 504):
+                    raise
+            if attempt == 3:
                 raise
-            if attempt == 2:
-                raise
-            print(f"API error: {exc}. Retrying...")
-            time.sleep(5 * (attempt + 1))
+            print(f"Retry {attempt}/3: {exc}")
+            time.sleep(5 * attempt)
 
-    rows.extend(batch)
-    print(f"Fetched: {len(rows)}")
-
-    if len(batch) < page_size:
+    if not batch:
         break
 
-    offset += page_size
+    # Lưu trang thành công trước khi tải trang kế tiếp
+    path = RESUME / f"page_{page_number:06d}.json"
+    save_json(path, batch)
 
-# 3. Lưu Bronze sau khi tải hoàn tất
-today = datetime.now(timezone.utc).strftime("%Y%m%d")
-filename = OUTPUT / f"nyc311_daily_{today}.json"
-temporary = filename.with_suffix(".json.tmp")
+    page_number += 1
+    cursor = batch[-1]
+    print(f"Saved page {page_number}: {len(batch)} records")
 
-with temporary.open("w") as f:
-    json.dump(rows, f)
+    if len(batch) < meta["page_size"]:
+        break
 
-temporary.replace(filename)
+# Ghép các trang thành file Bronze hoàn chỉnh
+filename = BRONZE / f"nyc311_daily_{meta['run_date']}.json"
+temp = filename.with_suffix(".json.tmp")
+
+total = 0
+
+with temp.open("w") as f:
+    f.write("[")
+    first = True
+
+    for page in sorted(RESUME.glob("page_*.json")):
+        for row in json.loads(page.read_text()):
+            if not first:
+                f.write(",")
+            json.dump(row, f, ensure_ascii=False)
+            first = False
+            total += 1
+
+    f.write("]")
+
+temp.replace(filename)
+shutil.rmtree(RESUME)
 
 print("File:", filename)
-print("Total records:", len(rows))
-print("INCREMENTAL INGESTION COMPLETE")
+print("Total records:", total)
+print("RESUMABLE INGESTION COMPLETE")
