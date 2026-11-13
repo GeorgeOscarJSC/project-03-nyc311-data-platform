@@ -3,10 +3,16 @@ from pathlib import Path
 
 BASE = Path(__file__).resolve().parent.parent
 
-files = list((BASE / "data/bronze").glob("nyc311_daily_*.json"))
-if not files:
-    raise FileNotFoundError("No daily Bronze file found")
-bronze = max(files, key=lambda p: p.name)
+import sys
+
+if len(sys.argv) > 1:
+    bronze = Path(sys.argv[1])
+else:
+    files = list((BASE / "data/bronze").glob("nyc311_daily_*.json"))
+    if not files:
+        raise FileNotFoundError("No daily Bronze file found")
+    bronze = max(files, key=lambda p: p.name)
+
 silver = BASE / "data/silver/nyc311_valid.jsonl"
 quarantine = BASE / "data/quarantine/nyc311_invalid.jsonl"
 

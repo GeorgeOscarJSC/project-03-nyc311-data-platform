@@ -15,10 +15,20 @@ flock -n -E 75 9 || {
 }
 
 echo "=== INGESTION ==="
-python3 src/ingestion/fetch_nyc311.py
+bronze_path=$(
+    set -o pipefail
+    python3 -u src/ingestion/fetch_nyc311.py |
+        tee -a  /dev/stderr |
+        sed -n 's/^File: //p'
+)
+
+if [ ! -f "$bronze_path" ]; then
+    echo "ERROR: The downloader did not report a valid Bronze file." >&2
+    exit 1
+fi
 
 echo "=== TRANSFORM ==="
-python3 src/transform.py
+python3 src/transform.py "$bronze_path"
 
 echo "=== POSTGRES LOAD ==="
 python3 src/loading/load_postgres.py
