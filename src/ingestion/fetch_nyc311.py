@@ -147,7 +147,8 @@ while True:
         break
 
 # Ghép các trang thành file Bronze hoàn chỉnh
-filename = BRONZE / f"nyc311_daily_{meta['run_date']}.json"
+file_stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
+filename = BRONZE / f"nyc311_daily_{file_stamp}.json"
 temp = filename.with_suffix(".json.tmp")
 
 total = 0
