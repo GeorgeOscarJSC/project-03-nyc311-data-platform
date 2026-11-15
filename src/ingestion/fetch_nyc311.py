@@ -55,7 +55,13 @@ else:
 
     start = result.stdout.strip().replace(" ", "T")
     if not start:
-        raise RuntimeError("Checkpoint not found")
+        first_start = os.getenv("BOOTSTRAP_START")
+        if not first_start:
+            raise RuntimeError(
+                "Database is empty. Set BOOTSTRAP_START, for example "
+                "2026-11-10T00:00:00."
+            )
+        start = datetime.strptime(first_start, "%Y-%m-%dT%H:%M:%S").isoformat()
 
     meta = {
         "start": start,
