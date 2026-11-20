@@ -39,7 +39,7 @@ else:
             "docker", "exec", "ecdp-postgres",
             "psql", "-X", "-At",
             "-U", "data_engineer",
-            "-d", "project03_nyc311",
+            "-d", os.getenv("NYC311_DB", "project03_nyc311"),
             "-c", f"""
                 SELECT (
                     MAX(created_date)

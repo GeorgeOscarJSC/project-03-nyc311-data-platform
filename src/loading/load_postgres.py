@@ -1,3 +1,4 @@
+import os
 import csv
 import io
 import json
@@ -79,7 +80,7 @@ result = subprocess.run(
         "docker", "exec", "-i", "ecdp-postgres",
         "psql", "-X", "-v", "ON_ERROR_STOP=1",
         "-U", "data_engineer",
-        "-d", "project03_nyc311"
+        "-d", os.getenv("NYC311_DB", "project03_nyc311"),
     ],
     input=script,
     text=True,
