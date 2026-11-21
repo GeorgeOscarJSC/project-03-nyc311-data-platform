@@ -22,6 +22,8 @@ NYC Open Data API
 ```bash
 ./run_pipeline.sh
 
+```
+
 ## Database
 Database: project03_nyc311
 
@@ -34,6 +36,8 @@ Reporting view: agency_performance
 SELECT *
 FROM agency_performance
 ORDER BY total_requests DESC;
+
+```
 
 ## Scheduling
 Daily execution via Linux cron at 08:00
