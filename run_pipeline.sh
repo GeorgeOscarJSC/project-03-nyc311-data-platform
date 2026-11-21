@@ -33,4 +33,17 @@ python3 src/transform.py "$bronze_path"
 echo "=== POSTGRES LOAD ==="
 python3 src/loading/load_postgres.py
 
+echo "=== EXPORT REPORT ==="
+
+mkdir -p data/reports
+
+docker exec ecdp-postgres \
+  psql -X -q -v ON_ERROR_STOP=1 \
+  -U data_engineer \
+  -d "${NYC311_DB:-project03_nyc311}" \
+  -c "COPY (
+      SELECT * FROM agency_performance
+      ORDER BY total_requests DESC
+  ) TO STDOUT WITH CSV HEADER" \
+  > data/reports/agency_performance.csv
 echo "=== PIPELINE COMPLETE ==="
