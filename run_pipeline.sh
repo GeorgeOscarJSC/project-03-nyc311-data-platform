@@ -33,6 +33,13 @@ python3 src/transform.py "$bronze_path"
 echo "=== POSTGRES LOAD ==="
 python3 src/loading/load_postgres.py
 
+echo "=== DATA QUALITY CHECK ==="
+
+docker exec -i project03-postgres \
+  psql -v ON_ERROR_STOP=1 \
+  -U data_engineer -d "${NYC311_DB:-project03_nyc311}" \
+  < sql/data_quality.sql
+
 echo "=== EXPORT REPORT ==="
 
 mkdir -p data/reports
