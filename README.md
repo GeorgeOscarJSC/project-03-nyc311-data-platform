@@ -17,6 +17,41 @@ NYC Open Data API
 - Linux cron
 - Git
 
+
+## First-Time Setup
+
+Requirements: Docker, Python 3.12, Linux.
+
+### 1. Create a database password
+
+```bash
+printf 'PROJECT03_PG_PASSWORD=%s\n' "$(openssl rand -hex 24)" > .env
+chmod 600 .env
+```
+
+### 2. Start PostgreSQL
+
+```bash
+docker compose up -d
+```
+
+### 3. Create the table and reporting view
+
+```bash
+docker exec -i project03-postgres psql -U data_engineer -d project03_nyc311 < sql/nyc311_requests.sql
+
+docker exec -i project03-postgres psql -U data_engineer -d project03_nyc311 < sql/agency_performance.sql
+```
+
+### 4. Run the first ingestion
+
+```bash
+BOOTSTRAP_START=2026-11-19T00:00:00 ./run_pipeline.sh
+```
+
+The bootstrap date is an example. Choose an appropriate starting date for your initial historical data load.
+
+
 ## Run Pipeline
 
 ```bash
