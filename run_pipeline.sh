@@ -37,7 +37,7 @@ echo "=== EXPORT REPORT ==="
 
 mkdir -p data/reports
 
-docker exec ecdp-postgres \
+docker exec project03-postgres \
   psql -X -q -v ON_ERROR_STOP=1 \
   -U data_engineer \
   -d "${NYC311_DB:-project03_nyc311}" \

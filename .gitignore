@@ -1,3 +1,5 @@
 /data/
 /pipeline.log
 *.bak
+
+.env

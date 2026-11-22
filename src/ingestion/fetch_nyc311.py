@@ -36,7 +36,7 @@ else:
 
     result = subprocess.run(
         [
-            "docker", "exec", "ecdp-postgres",
+            "docker", "exec", "project03-postgres",
             "psql", "-X", "-At",
             "-U", "data_engineer",
             "-d", os.getenv("NYC311_DB", "project03_nyc311"),

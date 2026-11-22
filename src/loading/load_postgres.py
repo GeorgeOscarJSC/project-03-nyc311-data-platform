@@ -77,7 +77,7 @@ script = (
 
 result = subprocess.run(
     [
-        "docker", "exec", "-i", "ecdp-postgres",
+        "docker", "exec", "-i", "project03-postgres",
         "psql", "-X", "-v", "ON_ERROR_STOP=1",
         "-U", "data_engineer",
         "-d", os.getenv("NYC311_DB", "project03_nyc311"),
