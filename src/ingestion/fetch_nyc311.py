@@ -92,8 +92,8 @@ if pages:
 # Tiếp tục tải bằng Keyset Pagination
 while True:
     where = (
-        f"created_date >= '{meta['start']}' "
-        f"AND created_date <= '{meta['end']}'"
+    f"created_date >= '{meta['start']}' "
+    f"AND created_date <= '{meta['end']}'"
     )
 
     if cursor:
@@ -106,6 +106,7 @@ while True:
         )
 
     params = urllib.parse.urlencode({
+        "$select": "*,:updated_at",
         "$where": where,
         "$order": "created_date ASC, unique_key ASC",
         "$limit": meta["page_size"]
