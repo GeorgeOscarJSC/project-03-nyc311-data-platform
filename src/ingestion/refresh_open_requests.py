@@ -1,3 +1,5 @@
+import time
+import urllib.error
 import os
 import json
 import urllib.parse
@@ -19,8 +21,15 @@ params = urllib.parse.urlencode({
 
 url = "https://data.cityofnewyork.us/resource/erm2-nwe9.json?" + params
 
-with urllib.request.urlopen(url, timeout=60) as response:
-    records = json.load(response)
+for attempt in range(3):
+    try:
+        with urllib.request.urlopen(url, timeout=60) as response:
+            records = json.load(response)
+        break
+    except urllib.error.HTTPError as error:
+        if error.code != 503 or attempt == 2:
+            raise
+        time.sleep(5)
 
 output = base / "data/bronze/open_requests_refresh.json"
 output.write_text(json.dumps(records))
