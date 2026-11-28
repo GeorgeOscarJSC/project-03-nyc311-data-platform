@@ -15,6 +15,12 @@ for ((start=0; start<total; start+=100)); do
     python3 src/transform.py data/bronze/open_requests_refresh.json
     python3 src/loading/load_postgres.py
 done
+
+docker exec -i project03-postgres \
+  psql -v ON_ERROR_STOP=1 \
+  -U data_engineer -d project03_nyc311 \
+  < sql/data_quality.sql
+
 docker exec project03-postgres \
   psql -U data_engineer -d project03_nyc311 \
   -c "COPY (SELECT * FROM agency_performance ORDER BY total_requests DESC) TO STDOUT WITH CSV HEADER" \
